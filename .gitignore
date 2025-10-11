@@ -4,7 +4,7 @@ __pycache__/
 .venv/
 
 # Model outputs
-checkpoints/
+runs/
 *.pt
 *.pth
 
