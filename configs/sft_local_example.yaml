@@ -1,0 +1,22 @@
+training:
+  output_dir: runs/sft/qwen3-mini
+  model_name_or_path: Qwen/Qwen3-0.6B
+  seed: 42
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 4
+  num_train_epochs: 1
+  warmup_ratio: 0.03
+
+dataset:
+  synthetic_n_examples: 32
+  split: train
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: all-linear
+
+optimizer:
+  learning_rate: 0.0002
+  weight_decay: 0.01
