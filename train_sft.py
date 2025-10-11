@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Configuration loader for the SFT LoRA pipeline."""
+"""Supervised fine-tuning with LoRA."""
 
 from __future__ import annotations
 
@@ -9,9 +9,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from datasets import Dataset
+from peft import LoraConfig
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    TrainingArguments,
+    set_seed,
+)
+from trl import SFTTrainer
+
+from data_loader import load_text_dataset
+
 try:
     import yaml
-except ImportError:  # pragma: no cover - import guard for environments without PyYAML
+except ImportError:
     yaml = None
 
 
@@ -33,16 +45,10 @@ class DatasetConfig:
             raise ConfigError(
                 "Provide either `dataset.name_or_path` or `dataset.synthetic_n_examples`, not both."
             )
-
         if not has_source and not wants_synthetic:
             raise ConfigError(
-                "Specify a dataset via `dataset.name_or_path` or request a synthetic dataset "
-                "with `dataset.synthetic_n_examples`."
+                "Specify a dataset via `dataset.name_or_path` or `dataset.synthetic_n_examples`."
             )
-
-        if wants_synthetic and self.synthetic_n_examples is not None:
-            if self.synthetic_n_examples <= 0:
-                raise ConfigError("`dataset.synthetic_n_examples` must be a positive integer.")
 
 
 @dataclass
@@ -51,44 +57,6 @@ class LoRAConfig:
     alpha: int = 32
     dropout: float = 0.05
     target_modules: Optional[Union[str, List[str]]] = None
-
-    def validate(self) -> None:
-        if self.r <= 0:
-            raise ConfigError("`lora.r` must be a positive integer.")
-        if self.alpha <= 0:
-            raise ConfigError("`lora.alpha` must be a positive integer.")
-        if not 0.0 <= self.dropout < 1.0:
-            raise ConfigError("`lora.dropout` must be between 0 and 1 (exclusive of 1).")
-        if self.target_modules is not None:
-            if isinstance(self.target_modules, str):
-                if not self.target_modules.strip():
-                    raise ConfigError("`lora.target_modules` string cannot be empty.")
-            else:
-                if not self.target_modules:
-                    raise ConfigError("`lora.target_modules` list cannot be empty.")
-                if not all(isinstance(module, str) and module.strip() for module in self.target_modules):
-                    raise ConfigError("`lora.target_modules` entries must be non-empty strings.")
-
-
-@dataclass
-class OptimizerConfig:
-    learning_rate: float = 2e-4
-    weight_decay: float = 0.0
-    betas: Optional[List[float]] = None
-    epsilon: Optional[float] = None
-
-    def validate(self) -> None:
-        if self.learning_rate <= 0:
-            raise ConfigError("`optimizer.learning_rate` must be greater than 0.")
-        if self.weight_decay < 0:
-            raise ConfigError("`optimizer.weight_decay` cannot be negative.")
-        if self.betas is not None:
-            if len(self.betas) != 2:
-                raise ConfigError("`optimizer.betas` must contain exactly two floats (beta1, beta2).")
-            if not all(0.0 < beta < 1.0 for beta in self.betas):
-                raise ConfigError("`optimizer.betas` values must be in the open interval (0, 1).")
-        if self.epsilon is not None and self.epsilon <= 0:
-            raise ConfigError("`optimizer.epsilon` must be greater than 0.")
 
 
 @dataclass
@@ -101,26 +69,15 @@ class TrainingConfig:
     num_train_epochs: Optional[float] = None
     max_steps: Optional[int] = None
     warmup_ratio: float = 0.03
-
-    def validate(self) -> None:
-        if not self.output_dir:
-            raise ConfigError("`training.output_dir` is required.")
-        if not self.model_name_or_path:
-            raise ConfigError("`training.model_name_or_path` is required.")
-        if self.per_device_train_batch_size <= 0:
-            raise ConfigError("`training.per_device_train_batch_size` must be positive.")
-        if self.gradient_accumulation_steps <= 0:
-            raise ConfigError("`training.gradient_accumulation_steps` must be positive.")
-
-        if self.num_train_epochs is None and self.max_steps is None:
-            raise ConfigError("Specify `training.num_train_epochs` or `training.max_steps`.")
-        if self.num_train_epochs is not None and self.num_train_epochs <= 0:
-            raise ConfigError("`training.num_train_epochs` must be positive.")
-        if self.max_steps is not None and self.max_steps <= 0:
-            raise ConfigError("`training.max_steps` must be positive.")
-
-        if not 0.0 <= self.warmup_ratio < 1.0:
-            raise ConfigError("`training.warmup_ratio` must be between 0 and 1 (exclusive of 1).")
+    logging_steps: int = 10
+    save_steps: Optional[int] = None
+    bf16: bool = False
+    gradient_checkpointing: bool = True
+    learning_rate: float = 2e-4
+    weight_decay: float = 0.0
+    adam_beta1: Optional[float] = None
+    adam_beta2: Optional[float] = None
+    adam_epsilon: Optional[float] = None
 
 
 @dataclass
@@ -128,37 +85,33 @@ class SFTConfig:
     training: TrainingConfig
     dataset: DatasetConfig
     lora: LoRAConfig = field(default_factory=LoRAConfig)
-    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
 
     @classmethod
     def from_dict(cls, raw: Dict[str, Any]) -> "SFTConfig":
-        try:
-            training = TrainingConfig(**raw["training"])
-        except KeyError as exc:
-            raise ConfigError("Missing `training` configuration block.") from exc
+        if "training" not in raw:
+            raise ConfigError("Missing `training` configuration block.")
+        if "dataset" not in raw:
+            raise ConfigError("Missing `dataset` configuration block.")
 
-        try:
-            dataset = DatasetConfig(**raw["dataset"])
-        except KeyError as exc:
-            raise ConfigError("Missing `dataset` configuration block.") from exc
+        # Merge optimizer fields into training if present
+        training_data = raw["training"].copy()
+        if "optimizer" in raw:
+            opt = raw["optimizer"]
+            training_data.setdefault("learning_rate", opt.get("learning_rate", 2e-4))
+            training_data.setdefault("weight_decay", opt.get("weight_decay", 0.0))
+            if "betas" in opt and opt["betas"]:
+                training_data.setdefault("adam_beta1", opt["betas"][0])
+                training_data.setdefault("adam_beta2", opt["betas"][1])
+            if "epsilon" in opt:
+                training_data.setdefault("adam_epsilon", opt["epsilon"])
 
-        lora_cfg = LoRAConfig(**raw.get("lora", {}))
-        optimizer_cfg = OptimizerConfig(**raw.get("optimizer", {}))
+        training = TrainingConfig(**training_data)
+        dataset = DatasetConfig(**raw["dataset"])
+        lora = LoRAConfig(**raw.get("lora", {}))
 
-        config = cls(
-            training=training,
-            dataset=dataset,
-            lora=lora_cfg,
-            optimizer=optimizer_cfg,
-        )
-        config.validate()
+        config = cls(training=training, dataset=dataset, lora=lora)
+        dataset.validate()
         return config
-
-    def validate(self) -> None:
-        self.training.validate()
-        self.dataset.validate()
-        self.lora.validate()
-        self.optimizer.validate()
 
 
 def _load_raw_config(config_path: Path) -> Dict[str, Any]:
@@ -192,6 +145,121 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _load_training_dataset(cfg: DatasetConfig) -> Dataset:
+    if cfg.synthetic_n_examples is not None:
+        from synthetic_dataset import build_sft_synthetic_dataset
+
+        dataset = build_sft_synthetic_dataset(cfg.synthetic_n_examples)
+        print(f"Using synthetic dataset with {len(dataset)} examples.")
+        return dataset
+
+    dataset = load_text_dataset(cfg.name_or_path, split=cfg.split)
+    print(f"Loaded dataset from `{cfg.name_or_path}` split `{cfg.split}` with {len(dataset)} examples.")
+    return dataset
+
+
+def _format_example(example: Dict[str, Any]) -> Dict[str, str]:
+    prompt = example["prompt"].rstrip()
+    response = example["response"].strip()
+    return {"text": f"{prompt}\n\nAssistant: {response}"}
+
+
+def _build_lora_config(cfg: LoRAConfig) -> LoraConfig:
+    target_modules = cfg.target_modules if cfg.target_modules is not None else "all-linear"
+    return LoraConfig(
+        r=cfg.r,
+        lora_alpha=cfg.alpha,
+        target_modules=target_modules,
+        lora_dropout=cfg.dropout,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
+
+def _load_tokenizer(model_name: str) -> AutoTokenizer:
+    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    return tokenizer
+
+
+def _load_model(training_cfg: TrainingConfig) -> AutoModelForCausalLM:
+    model = AutoModelForCausalLM.from_pretrained(training_cfg.model_name_or_path)
+    if training_cfg.gradient_checkpointing:
+        model.gradient_checkpointing_enable()
+        if hasattr(model.config, "use_cache"):
+            model.config.use_cache = False
+    return model
+
+
+def run_training(config: SFTConfig, dataset: Dataset) -> None:
+    set_seed(config.training.seed)
+    Path(config.training.output_dir).mkdir(parents=True, exist_ok=True)
+
+    tokenizer = _load_tokenizer(config.training.model_name_or_path)
+    model = _load_model(config.training)
+
+    # Sync model config with tokenizer special tokens
+    model.config.pad_token_id = tokenizer.pad_token_id
+    if hasattr(model, "generation_config") and model.generation_config is not None:
+        model.generation_config.pad_token_id = tokenizer.pad_token_id
+
+    lora_config = _build_lora_config(config.lora)
+
+    processed_dataset = dataset.map(
+        _format_example,
+        remove_columns=dataset.column_names,
+        desc="Formatting prompts for SFT",
+    )
+
+    save_strategy = "steps" if config.training.save_steps else "epoch"
+    tc = config.training
+
+    training_args_kwargs = {
+        "output_dir": tc.output_dir,
+        "per_device_train_batch_size": tc.per_device_train_batch_size,
+        "gradient_accumulation_steps": tc.gradient_accumulation_steps,
+        "warmup_ratio": tc.warmup_ratio,
+        "learning_rate": tc.learning_rate,
+        "weight_decay": tc.weight_decay,
+        "logging_steps": tc.logging_steps,
+        "save_strategy": save_strategy,
+        "gradient_checkpointing": tc.gradient_checkpointing,
+        "report_to": "none",
+        "remove_unused_columns": False,
+    }
+
+    # Add optional parameters
+    if tc.num_train_epochs is not None:
+        training_args_kwargs["num_train_epochs"] = tc.num_train_epochs
+    if tc.max_steps is not None:
+        training_args_kwargs["max_steps"] = tc.max_steps
+    if tc.save_steps is not None:
+        training_args_kwargs["save_steps"] = tc.save_steps
+    if tc.bf16:
+        training_args_kwargs["bf16"] = True
+    if tc.adam_beta1 is not None:
+        training_args_kwargs["adam_beta1"] = tc.adam_beta1
+    if tc.adam_beta2 is not None:
+        training_args_kwargs["adam_beta2"] = tc.adam_beta2
+    if tc.adam_epsilon is not None:
+        training_args_kwargs["adam_epsilon"] = tc.adam_epsilon
+
+    training_args = TrainingArguments(**training_args_kwargs)
+
+    trainer = SFTTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=processed_dataset,
+        peft_config=lora_config,
+        processing_class=tokenizer,
+    )
+
+    trainer.train()
+    trainer.save_model()
+    tokenizer.save_pretrained(config.training.output_dir)
+
+
 def main() -> None:
     args = parse_args()
     raw_config = _load_raw_config(args.config)
@@ -199,10 +267,13 @@ def main() -> None:
 
     print("Loaded SFT config:")
     print(json.dumps(raw_config, indent=2))
-    print(
-        "\nTraining pipeline is not yet implemented. "
-        "Next step: integrate TRL SFTTrainer using this configuration."
-    )
+
+    dataset = _load_training_dataset(config.dataset)
+    sample = dataset[0]
+    print(f"\nSample example:\nprompt: {sample['prompt']}\nresponse: {sample['response']}")
+    print("\nStarting supervised fine-tuning run...\n")
+
+    run_training(config, dataset)
 
 
 if __name__ == "__main__":

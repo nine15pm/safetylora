@@ -11,10 +11,7 @@ machine_rank: 0
 main_training_function: main
 rdzv_backend: static
 same_network: true
-timeout: 120
 tpu_env: {}
-xpu_config: {}
 fsdp_config: {}
 deepspeed_config: {}
 megatron_lm_config: {}
-cuda_visible_devices: "0"
