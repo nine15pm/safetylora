@@ -1,0 +1,20 @@
+# accelerate config for single 3080 dry runs; run `accelerate launch --config_file configs/accelerate_local.yaml ...`
+compute_environment: LOCAL_MACHINE
+distributed_type: NO
+gpu_ids: "0"
+mixed_precision: fp16
+downcast_bf16: no
+use_cpu: false
+num_processes: 1
+num_machines: 1
+machine_rank: 0
+main_training_function: main
+rdzv_backend: static
+same_network: true
+timeout: 120
+tpu_env: {}
+xpu_config: {}
+fsdp_config: {}
+deepspeed_config: {}
+megatron_lm_config: {}
+cuda_visible_devices: "0"
