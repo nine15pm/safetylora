@@ -74,6 +74,8 @@ class TrainingConfig:
     save_steps: Optional[int] = None
     bf16: bool = False
     gradient_checkpointing: bool = True
+    log_with_tensorboard: bool = True
+    logging_dir: Optional[str] = None
     learning_rate: float = 2e-4
     weight_decay: float = 0.0
     adam_beta1: Optional[float] = None
@@ -260,9 +262,17 @@ def run_training(config: SFTConfig, dataset: Dataset) -> None:
         "logging_steps": tc.logging_steps,
         "save_strategy": save_strategy,
         "gradient_checkpointing": tc.gradient_checkpointing,
-        "report_to": "none",
         "remove_unused_columns": False,
     }
+
+    if tc.log_with_tensorboard:
+        logging_dir = tc.logging_dir or str(Path(tc.output_dir) / "tensorboard")
+        Path(logging_dir).mkdir(parents=True, exist_ok=True)
+        training_args_kwargs["logging_dir"] = logging_dir
+        training_args_kwargs["report_to"] = ["tensorboard"]
+        print(f"TensorBoard logging enabled. Directory: {logging_dir}")
+    else:
+        training_args_kwargs["report_to"] = "none"
 
     # Add optional parameters
     if tc.num_train_epochs is not None:
@@ -287,7 +297,7 @@ def run_training(config: SFTConfig, dataset: Dataset) -> None:
         args=training_args,
         train_dataset=processed_dataset,
         peft_config=lora_config,
-        processing_class=tokenizer,
+        tokenizer=tokenizer,
     )
 
     resume_path = _resolve_resume_checkpoint(tc.resume_from_checkpoint, tc.output_dir)
