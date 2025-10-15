@@ -72,7 +72,6 @@ class TrainingConfig:
     warmup_ratio: float = 0.03
     logging_steps: int = 10
     save_steps: Optional[int] = None
-    bf16: bool = False
     gradient_checkpointing: bool = True
     log_with_tensorboard: bool = True
     logging_dir: Optional[str] = None
@@ -281,8 +280,6 @@ def run_training(config: SFTConfig, dataset: Dataset) -> None:
         training_args_kwargs["max_steps"] = tc.max_steps
     if tc.save_steps is not None:
         training_args_kwargs["save_steps"] = tc.save_steps
-    if tc.bf16:
-        training_args_kwargs["bf16"] = True
     if tc.adam_beta1 is not None:
         training_args_kwargs["adam_beta1"] = tc.adam_beta1
     if tc.adam_beta2 is not None:
