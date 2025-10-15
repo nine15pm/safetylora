@@ -6,6 +6,7 @@ training:
   gradient_accumulation_steps: 4
   num_train_epochs: 1
   warmup_ratio: 0.03
+  resume_from_checkpoint: latest
 
 dataset:
   synthetic_n_examples: 32

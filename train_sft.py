@@ -17,6 +17,7 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
+from transformers.trainer_utils import get_last_checkpoint
 from trl import SFTTrainer
 
 from data_loader import load_text_dataset
@@ -78,6 +79,7 @@ class TrainingConfig:
     adam_beta1: Optional[float] = None
     adam_beta2: Optional[float] = None
     adam_epsilon: Optional[float] = None
+    resume_from_checkpoint: Optional[Union[str, bool]] = None
 
 
 @dataclass
@@ -192,6 +194,39 @@ def _load_model(training_cfg: TrainingConfig) -> AutoModelForCausalLM:
     return model
 
 
+def _resolve_resume_checkpoint(
+    resume_option: Optional[Union[str, bool]], output_dir: Union[str, Path]
+) -> Optional[str]:
+    if resume_option in (None, False):
+        return None
+
+    output_dir = Path(output_dir)
+    if isinstance(resume_option, bool):
+        resume_option = "latest"
+
+    if isinstance(resume_option, str):
+        if resume_option.lower() == "latest":
+            checkpoint = get_last_checkpoint(output_dir)
+            if checkpoint is None:
+                print(f"No checkpoint found in `{output_dir}`; starting fresh.")
+            else:
+                print(f"Resuming from latest checkpoint at `{checkpoint}`.")
+            return checkpoint
+
+        checkpoint_path = Path(resume_option)
+        if not checkpoint_path.exists():
+            candidate = output_dir / resume_option
+            if candidate.exists():
+                checkpoint_path = candidate
+            else:
+                raise ConfigError(f"Checkpoint not found at `{resume_option}`.")
+        resolved = str(checkpoint_path.resolve())
+        print(f"Resuming from checkpoint `{resolved}`.")
+        return resolved
+
+    raise ConfigError("`resume_from_checkpoint` must be a bool, 'latest', or a valid path.")
+
+
 def run_training(config: SFTConfig, dataset: Dataset) -> None:
     set_seed(config.training.seed)
     Path(config.training.output_dir).mkdir(parents=True, exist_ok=True)
@@ -255,7 +290,8 @@ def run_training(config: SFTConfig, dataset: Dataset) -> None:
         processing_class=tokenizer,
     )
 
-    trainer.train()
+    resume_path = _resolve_resume_checkpoint(tc.resume_from_checkpoint, tc.output_dir)
+    trainer.train(resume_from_checkpoint=resume_path)
     trainer.save_model()
     tokenizer.save_pretrained(config.training.output_dir)
 
