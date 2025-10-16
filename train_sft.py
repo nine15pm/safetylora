@@ -294,7 +294,7 @@ def run_training(config: SFTConfig, dataset: Dataset) -> None:
         args=training_args,
         train_dataset=processed_dataset,
         peft_config=lora_config,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
     )
 
     resume_path = _resolve_resume_checkpoint(tc.resume_from_checkpoint, tc.output_dir)
