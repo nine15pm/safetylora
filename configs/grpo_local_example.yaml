@@ -1,0 +1,36 @@
+# Minimal GRPO smoke-test config; update `sft_adapter_path` to your SFT output.
+training:
+  output_dir: runs/grpo/qwen3-0.6b/local-smoke
+  policy_model_name_or_path: Qwen/Qwen3-0.6B
+  sft_adapter_path: runs/sft/qwen3-0.6b/local-smoke
+  seed: 42
+  gradient_checkpointing: true
+  trl_grpo:
+    learning_rate: 5.0e-6
+    per_device_train_batch_size: 1
+    gradient_accumulation_steps: 1
+    num_train_epochs: 1
+    num_generations: 4
+    generation_batch_size: 4
+    max_prompt_length: 512
+    max_completion_length: 256
+    logging_steps: 1
+    save_steps: 20
+    save_total_limit: 1
+
+dataset:
+  synthetic_n_prompts: 8
+
+reward:
+  judge_model_name: stub-judge
+  stub_score: 0.0
+  max_new_tokens: 128
+  temperature: 0.0
+  top_p: 1.0
+  batch_size: 1
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: all-linear
