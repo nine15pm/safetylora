@@ -8,11 +8,11 @@ async def main() -> None:
         provider="grok",
         temperature=0.7,
         max_tokens=4096,
-        max_concurrent=15,
+        max_concurrent=20,
         resume=False,
         system_prompts_file="sysprompts.jsonl",
-        user_turns_file="userturns_test.jsonl",
-        assistant_turns_file="assistantturns_test.jsonl",
+        user_turns_file="userturns.jsonl",
+        assistant_turns_file="assistantturns.jsonl",
     )
     path = await generate_assistant_turns(cfg)
     print(f"Wrote assistant turns to {path}")
