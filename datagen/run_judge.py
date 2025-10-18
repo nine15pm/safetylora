@@ -10,7 +10,7 @@ def main() -> None:
         assistant_turns_path=Path(__file__).with_name("assistantturns_test.jsonl"),
         scored_path=Path(__file__).with_name("assistantturns_test_scored.jsonl"),
         resume=False,
-        provider="deepseek",
+        provider="gemini",
     )
     path = run_judge(cfg)
     print(f"Wrote judge scores to {path}")

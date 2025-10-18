@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Tuple
 
+from tqdm import tqdm
 from datagen.datagen import _load_safety_policies, _read_jsonl
 from datagen.llm import LLM
 from datagen.prompts import SAFETY_JUDGE_SYSTEM_PROMPT, SAFETY_JUDGE_USER_PROMPT
@@ -12,12 +13,12 @@ from datagen.prompts import SAFETY_JUDGE_SYSTEM_PROMPT, SAFETY_JUDGE_USER_PROMPT
 
 @dataclass(frozen=True)
 class JudgeConfig:
-    provider: str = "moonshot"
-    temperature: float = 0.5
-    max_tokens: int = 512
+    provider: str = "gemini"
+    temperature: float = 0.6
+    max_tokens: int = 4096
     resume: bool = True
     assistant_turns_path: Path = field(
-        default_factory=lambda: Path(__file__).with_name("assistantturns.jsonl")
+        default_factory=lambda: Path(__file__).with_name("assistantturns_test.jsonl")
     )
     safety_policy_path: Path = field(
         default_factory=lambda: Path(__file__).with_name("safetypolicy.jsonl")
@@ -95,9 +96,8 @@ def run_judge(config: JudgeConfig | None = None) -> Path:
     )
     system_prompt = SAFETY_JUDGE_SYSTEM_PROMPT.strip()
     cfg.scored_path.parent.mkdir(parents=True, exist_ok=True)
-
     with cfg.scored_path.open("a", encoding="utf-8") as handle:
-        for row in assistant_turns:
+        for row in tqdm(assistant_turns, desc="Scoring responses", unit="turn"):
             user_msg = (row.get("user_msg") or "").strip()
             assistant_msg = (row.get("assistant_msg") or "").strip()
             system_prompt_id = row.get("system_prompt_id")

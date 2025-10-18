@@ -97,6 +97,7 @@ class AssistantTurnConfig:
 
 @dataclass
 class AssistantTurnRecord:
+    turn_id: str | None
     seed_id: str | None
     category: str | None
     system_prompt_id: str
@@ -106,6 +107,7 @@ class AssistantTurnRecord:
 
     def to_json(self) -> str:
         payload = {
+            "turn_id": self.turn_id,
             "seed_id": self.seed_id,
             "category": self.category,
             "system_prompt_id": self.system_prompt_id,
@@ -113,6 +115,8 @@ class AssistantTurnRecord:
             "user_msg": self.user_msg,
             "assistant_msg": self.assistant_msg,
         }
+        if payload["turn_id"] is None:
+            del payload["turn_id"]
         return json.dumps(payload, ensure_ascii=False)
 
 
@@ -224,7 +228,8 @@ def _load_completed_assistant_turns(path: Path) -> set[tuple[str, str]]:
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            seed_ref = record.get("seed_id") or record.get("user_msg")
+            turn_id = record.get("turn_id")
+            seed_ref = turn_id or record.get("seed_id") or record.get("user_msg")
             system_prompt_id = record.get("system_prompt_id")
             if system_prompt_id:
                 completed.add((str(seed_ref or ""), str(system_prompt_id)))
@@ -380,7 +385,8 @@ def generate_assistant_turns(config: AssistantTurnConfig | None = None) -> Path:
                 continue
             category = turn.get("category")
             policy = policies.get(category or "")
-            seed_ref = turn.get("seed_id") or user_msg
+            turn_id = turn.get("turn_id")
+            seed_ref = turn_id or turn.get("seed_id") or user_msg
 
             for system_prompt in system_prompts:
                 system_prompt_id = system_prompt.get("id") or system_prompt.get("name")
@@ -401,6 +407,7 @@ def generate_assistant_turns(config: AssistantTurnConfig | None = None) -> Path:
                     user_prompt=user_prompt,
                 )
                 record = AssistantTurnRecord(
+                    turn_id=turn_id,
                     seed_id=turn.get("seed_id"),
                     category=category,
                     system_prompt_id=str(system_prompt_id),

@@ -7,7 +7,7 @@ from datagen.datagen import AssistantTurnConfig, generate_assistant_turns
 
 def main() -> None:
     cfg = AssistantTurnConfig(
-        provider="moonshot",
+        provider="grok",
         user_turns_path=Path(__file__).with_name("userturns_test.jsonl"),
         assistant_turns_path=Path(__file__).with_name("assistantturns_test.jsonl"),
         resume=False,
