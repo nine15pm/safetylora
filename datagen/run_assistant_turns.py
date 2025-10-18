@@ -1,20 +1,22 @@
-from __future__ import annotations
-
+import asyncio
 from pathlib import Path
 
 from datagen.datagen import AssistantTurnConfig, generate_assistant_turns
 
-
-def main() -> None:
+async def main() -> None:
     cfg = AssistantTurnConfig(
         provider="grok",
-        user_turns_path=Path(__file__).with_name("userturns_test.jsonl"),
-        assistant_turns_path=Path(__file__).with_name("assistantturns_test.jsonl"),
+        temperature=0.7,
+        max_tokens=4096,
+        max_concurrent=15,
         resume=False,
+        system_prompts_file="sysprompts.jsonl",
+        user_turns_file="userturns_test.jsonl",
+        assistant_turns_file="assistantturns_test.jsonl",
     )
-    path = generate_assistant_turns(cfg)
+    path = await generate_assistant_turns(cfg)
     print(f"Wrote assistant turns to {path}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
