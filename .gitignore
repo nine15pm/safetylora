@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 .env
 
+# IDE/Tools
+.claude/
+
 # Model outputs
 runs/
 *.pt
