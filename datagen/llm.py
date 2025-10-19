@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 from pathlib import Path
 from typing import Any, Dict
@@ -121,6 +122,7 @@ class GeminiCompletion:
         if not self._model:
             raise ValueError("No Gemini model provided.")
         self._defaults = default_params
+        self._closed = False
 
     async def generate(
         self,
@@ -144,6 +146,31 @@ class GeminiCompletion:
         )
         text = getattr(response, "text", None) or getattr(response, "output_text", None)
         return str(text or "")
+
+    async def aclose(self) -> None:
+        """Close underlying async client session if still open."""
+        if self._closed:
+            return
+
+        aio_iface = getattr(self._client, "aio", None)
+        to_close = []
+        if aio_iface:
+            close_callable = getattr(aio_iface, "close", None)
+            if callable(close_callable):
+                to_close.append(close_callable)
+
+            session = getattr(aio_iface, "session", None)
+            if session:
+                session_close = getattr(session, "close", None)
+                if callable(session_close):
+                    to_close.append(session_close)
+
+        for closer in to_close:
+            result = closer()
+            if inspect.isawaitable(result):
+                await result
+
+        self._closed = True
 
 
 __all__ = ["OpenAICompletion", "GeminiCompletion", "OPENAI_PROVIDERS", "GEMINI_PROVIDER"]

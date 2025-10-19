@@ -219,6 +219,9 @@ async def generate_assistant_turns(config: AssistantTurnConfig) -> Path:
                 continue
             if "user_turn_id" not in row or "system_prompt_id" not in row:
                 continue
+            # Skip rows with errors or empty assistant_msg (treat as incomplete)
+            if row.get("error") or not row.get("assistant_msg"):
+                continue
             user_turn_id = row["user_turn_id"]
             system_prompt_id = row["system_prompt_id"]
             if user_turn_id and system_prompt_id:
