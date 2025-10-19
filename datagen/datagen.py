@@ -141,7 +141,7 @@ async def generate_user_turns(config: UserTurnConfig) -> Path:
             messages = [json.loads(line.strip()) for line in response.strip().split("\n") if line.strip()]
             # Build output records
             return [{
-                "turn_id": str(uuid.uuid4()),
+                "user_turn_id": str(uuid.uuid4()),
                 "seed_id": seed["seed_id"],
                 "intent": seed["intent"],
                 "category": seed["category"],
@@ -189,13 +189,16 @@ async def generate_assistant_turns(config: AssistantTurnConfig) -> Path:
     for turn in user_turns:
         if turn.get("error") or not turn.get("user_msg"):
             continue
+        user_turn_id = turn.get("user_turn_id")
+        if not user_turn_id:
+            continue
 
         for sp in system_prompts:
             jobs.append({
                 "user_msg": turn["user_msg"],
                 "system_prompt": sp,
                 "metadata": {
-                    "turn_id": turn.get("turn_id"),
+                    "user_turn_id": user_turn_id,
                     "seed_id": turn.get("seed_id"),
                     "category": turn.get("category"),
                     "system_prompt_id": sp.get("id") or sp.get("name"),
@@ -208,18 +211,21 @@ async def generate_assistant_turns(config: AssistantTurnConfig) -> Path:
         print("No jobs to process")
         return config.assistant_turns_path
 
-    # Filter completed if resuming (use turn_id + system_prompt_id)
+    # Filter completed if resuming (use user_turn_id + system_prompt_id)
     if config.resume:
-        completed = {
-            (row["turn_id"], row["system_prompt_id"])
-            for row in read_jsonl(config.assistant_turns_path)
-            if row.get("provider") == config.provider
-            and "turn_id" in row
-            and "system_prompt_id" in row
-        }
+        completed = set()
+        for row in read_jsonl(config.assistant_turns_path):
+            if row.get("provider") != config.provider:
+                continue
+            if "user_turn_id" not in row or "system_prompt_id" not in row:
+                continue
+            user_turn_id = row["user_turn_id"]
+            system_prompt_id = row["system_prompt_id"]
+            if user_turn_id and system_prompt_id:
+                completed.add((user_turn_id, system_prompt_id))
         jobs = [
             j for j in jobs
-            if (j["metadata"]["turn_id"], j["metadata"]["system_prompt_id"]) not in completed
+            if (j["metadata"]["user_turn_id"], j["metadata"]["system_prompt_id"]) not in completed
         ]
 
     if not jobs:
@@ -235,6 +241,7 @@ async def generate_assistant_turns(config: AssistantTurnConfig) -> Path:
 
     # Run all generations concurrently with incremental writes
     async def _generate_one(job):
+        assistant_turn_id = str(uuid.uuid4())
         input_parts = [
             json.dumps({"system_prompt": job["system_prompt"]["prompt"]}, ensure_ascii=False),
             json.dumps({"user_prompt": job["user_msg"]}, ensure_ascii=False),
@@ -245,9 +252,9 @@ async def generate_assistant_turns(config: AssistantTurnConfig) -> Path:
                 system_prompt=ASSISTANT_TURN_SYSTEM_PROMPT.strip(),
                 user_prompt=user_prompt
             )
-            return {**job["metadata"], "assistant_msg": response.strip()}
+            return {**job["metadata"], "assistant_turn_id": assistant_turn_id, "assistant_msg": response.strip()}
         except Exception as e:
-            return {**job["metadata"], "assistant_msg": "", "error": str(e)}
+            return {**job["metadata"], "assistant_turn_id": assistant_turn_id, "assistant_msg": "", "error": str(e)}
 
     tasks = [_generate_one(job) for job in jobs]
     total_records = 0
