@@ -1,20 +1,21 @@
-from __future__ import annotations
+import asyncio
 
-from pathlib import Path
-
-from datagen.judge import JudgeConfig, run_judge
+from datagen.judge import JudgeConfig, judge_safety
 
 
-def main() -> None:
+async def main() -> None:
     cfg = JudgeConfig(
-        assistant_turns_path=Path(__file__).with_name("assistantturns_test.jsonl"),
-        scored_path=Path(__file__).with_name("assistantturns_test_scored.jsonl"),
+        temperature=0.6,
+        max_tokens=4096,
+        max_concurrent=10,
         resume=False,
-        provider="gemini",
+        safety_policy_file="safetypolicy.jsonl",
+        assistant_turns_file="assistantturns_test.jsonl",
+        scored_file="assistantturns_test_scored.jsonl",
     )
-    path = run_judge(cfg)
+    path = await judge_safety(cfg)
     print(f"Wrote judge scores to {path}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

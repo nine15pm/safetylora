@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from google import genai
+from google.genai import types
 from openai import AsyncOpenAI
 
 
@@ -130,11 +131,16 @@ class GeminiCompletion:
     ) -> str:
         params = {**self._defaults, **overrides}
 
+        # Build config with system_instruction if provided
+        config_kwargs = {}
+        if system_prompt:
+            config_kwargs["system_instruction"] = system_prompt
+        config_kwargs.update(params)
+
         response = await self._client.aio.models.generate_content(
             model=self._model,
             contents=user_prompt,
-            system_instruction=system_prompt or None,
-            **params,
+            config=types.GenerateContentConfig(**config_kwargs),
         )
         text = getattr(response, "text", None) or getattr(response, "output_text", None)
         return str(text or "")
