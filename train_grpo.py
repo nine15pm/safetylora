@@ -20,7 +20,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 
 from data_loader import load_text_dataset
-from synthetic_dataset import build_sft_synthetic_dataset
 from reward import build_reward_function, create_reward_scorer
 
 try:
@@ -41,20 +40,10 @@ class ConfigError(ValueError):
 class DatasetConfig:
     name_or_path: Optional[str] = None
     split: str = "train"
-    synthetic_n_prompts: Optional[int] = None
 
     def validate(self) -> None:
-        has_source = self.name_or_path is not None
-        wants_synthetic = self.synthetic_n_prompts is not None
-
-        if has_source and wants_synthetic:
-            raise ConfigError(
-                "Provide either `dataset.name_or_path` or `dataset.synthetic_n_prompts`, not both."
-            )
-        if not has_source and not wants_synthetic:
-            raise ConfigError(
-                "Specify a dataset via `dataset.name_or_path` or `dataset.synthetic_n_prompts`."
-            )
+        if self.name_or_path is None:
+            raise ConfigError("Specify a dataset via `dataset.name_or_path`.")
 
 
 @dataclass
@@ -142,14 +131,7 @@ class GRPOConfig:
 
 def _prepare_prompt_dataset(cfg: DatasetConfig) -> Dataset:
     """Return a `prompt`-only dataset for GRPO rollouts."""
-
-    if cfg.synthetic_n_prompts is not None:
-        dataset = build_sft_synthetic_dataset(cfg.synthetic_n_prompts)
-        # NOTE: synthetic toggle is temporary and will be removed once real data lands.
-    else:
-        if cfg.name_or_path is None:  # pragma: no cover - defensive guard, validate() should catch
-            raise ConfigError("`dataset.name_or_path` must be provided when not using synthetic prompts.")
-        dataset = load_text_dataset(cfg.name_or_path, split=cfg.split)
+    dataset = load_text_dataset(cfg.name_or_path, split=cfg.split)
 
     if "prompt" not in dataset.column_names:
         raise ConfigError("Prompt dataset must include a `prompt` column.")
@@ -252,13 +234,8 @@ def main() -> None:
     print(json.dumps(raw_config, indent=2))
 
     prompt_dataset = _prepare_prompt_dataset(config.dataset)
-    dataset_source = (
-        config.dataset.name_or_path
-        if config.dataset.name_or_path is not None
-        else f"synthetic:{config.dataset.synthetic_n_prompts}"
-    )
     print(
-        f"Prepared prompt dataset from {dataset_source} with {len(prompt_dataset)} prompts."
+        f"Prepared prompt dataset from {config.dataset.name_or_path} with {len(prompt_dataset)} prompts."
     )
 
     reward_scorer = create_reward_scorer(

@@ -36,20 +36,10 @@ class ConfigError(ValueError):
 class DatasetConfig:
     name_or_path: Optional[str] = None
     split: str = "train"
-    synthetic_n_examples: Optional[int] = None
 
     def validate(self) -> None:
-        has_source = self.name_or_path is not None
-        wants_synthetic = self.synthetic_n_examples is not None
-
-        if has_source and wants_synthetic:
-            raise ConfigError(
-                "Provide either `dataset.name_or_path` or `dataset.synthetic_n_examples`, not both."
-            )
-        if not has_source and not wants_synthetic:
-            raise ConfigError(
-                "Specify a dataset via `dataset.name_or_path` or `dataset.synthetic_n_examples`."
-            )
+        if self.name_or_path is None:
+            raise ConfigError("Specify a dataset via `dataset.name_or_path`.")
 
 
 @dataclass
@@ -149,13 +139,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def _load_training_dataset(cfg: DatasetConfig) -> Dataset:
-    if cfg.synthetic_n_examples is not None:
-        from synthetic_dataset import build_sft_synthetic_dataset
-
-        dataset = build_sft_synthetic_dataset(cfg.synthetic_n_examples)
-        print(f"Using synthetic dataset with {len(dataset)} examples.")
-        return dataset
-
     dataset = load_text_dataset(cfg.name_or_path, split=cfg.split)
     print(f"Loaded dataset from `{cfg.name_or_path}` split `{cfg.split}` with {len(dataset)} examples.")
     return dataset

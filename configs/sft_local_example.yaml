@@ -8,7 +8,7 @@ training:
   warmup_ratio: 0.03
 
 dataset:
-  synthetic_n_examples: 32
+  name_or_path: data/sft_dataset.jsonl  # Update with your dataset path
   split: train
 
 lora:

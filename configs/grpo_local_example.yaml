@@ -19,7 +19,8 @@ training:
     save_total_limit: 1
 
 dataset:
-  synthetic_n_prompts: 8
+  name_or_path: data/grpo_prompts.jsonl  # Update with your dataset path
+  split: train
 
 reward:
   judge_model_name: stub-judge
