@@ -23,7 +23,7 @@ def load_models(base: str, adapter: str):
 
 def to_device(batch, model):
     device = next(model.parameters()).device
-    return {k: v.clone().to(device) for k, v in batch.items()}
+    return {k: v.to(device) for k, v in batch.items()}
 
 
 def generate(model, tok, inputs, max_new_tokens: int, temperature: float):
@@ -62,19 +62,29 @@ def main():
             break
         if not user:
             continue
-        messages = []
+        messages = []  # Single-turn: we rebuild from system + latest user only.
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": user})
         prompt = tok.apply_chat_template(
             messages,
             add_generation_prompt=True,
+            enable_thinking=False,
             tokenize=True,
             return_tensors="pt",
             return_attention_mask=True,
         )
-        base_inputs = to_device(prompt, base_model)
-        sft_inputs = to_device(prompt, sft_model)
+        if isinstance(prompt, torch.Tensor):
+            prompt_inputs = {
+                "input_ids": prompt,
+                "attention_mask": prompt.ne(tok.pad_token_id).long(),
+            }
+        else:
+            prompt_inputs = {k: v for k, v in prompt.items()}
+            if "attention_mask" not in prompt_inputs:
+                prompt_inputs["attention_mask"] = prompt_inputs["input_ids"].ne(tok.pad_token_id).long()
+        base_inputs = to_device(prompt_inputs, base_model)
+        sft_inputs = to_device(prompt_inputs, sft_model)
         base_text = generate(base_model, tok, base_inputs, args.max_new_tokens, args.temperature)
         sft_text = generate(sft_model, tok, sft_inputs, args.max_new_tokens, args.temperature)
         print("\n[Base]\n" + base_text + "\n")
