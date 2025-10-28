@@ -11,4 +11,4 @@ temperature: 0.7  # Set to 0 for greedy decoding
 
 # Output settings (optional)
 run_id: "sft-checkpoint-600"  # Defaults to adapter parent dir name
-output_dir: "runs/sft/evals_results"
+output_dir: "runs/sft/qwen3-0.6b/local-smoke/evals"
