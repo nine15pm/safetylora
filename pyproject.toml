@@ -27,3 +27,6 @@ datagen = [
 monitoring = [
     "wandb>=0.16.6",
 ]
+
+[tool.setuptools]
+packages = ["datagen", "evals"]
