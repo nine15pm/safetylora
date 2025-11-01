@@ -17,6 +17,7 @@ data/
 
 # Logs
 *.log
+wandb/
 
 # Project specific
 reference/
