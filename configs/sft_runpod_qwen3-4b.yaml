@@ -1,5 +1,5 @@
 training:
-  output_dir: runs/sft/qwen3-4b/dryrun1
+  output_dir: runs/sft/qwen3-4b/run1
   model_name_or_path: Qwen/Qwen3-4B-Instruct-2507
   seed: 42
   bf16: true
@@ -18,7 +18,7 @@ training:
 
 wandb:
   project: safetylora-youth
-  run_name: sft-qwen3-4b-dryrun1
+  run_name: sft-qwen3-4b-run1
   tags:
     - runpod
     - sft
