@@ -1,0 +1,42 @@
+training:
+  output_dir: runs/sft/qwen3-4b/dryrun1
+  model_name_or_path: Qwen/Qwen3-4B-Instruct-2507
+  seed: 42
+  bf16: true
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 4
+  num_train_epochs: 2
+  warmup_ratio: 0.03
+  gradient_checkpointing: true
+  logging_steps: 20
+  save_steps: 200
+  save_total_limit: 2
+  lr_scheduler_type: cosine
+  max_grad_norm: 0.3
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+
+wandb:
+  project: safetylora-youth
+  run_name: sft-qwen3-4b-dryrun1
+  tags:
+    - runpod
+    - sft
+    - qwen3-4b
+
+dataset:
+  name_or_path: train.jsonl
+  split: train
+
+lora:
+  r: 32
+  alpha: 16
+  lora_dropout: 0.0
+  target_modules: all-linear
+
+optimizer:
+  learning_rate: 0.0001
+  weight_decay: 0.1
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_epsilon: 1.0e-8
