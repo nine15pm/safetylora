@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "safetylora"
+version = "0.1.0"
+description = "LoRA SFT and GRPO training routines for youth-safe Qwen models."
+requires-python = ">=3.10"
+dependencies = [
+    "torch==2.3.1",
+    "transformers==4.41.2",
+    "accelerate==0.31.0",
+    "trl==0.9.4",
+    "peft==0.11.1",
+    "datasets==2.19.1",
+    "safetensors==0.4.3",
+    "pyyaml>=6.0.1",
+]
+
+[project.optional-dependencies]
+datagen = [
+    "openai>=1.30.5",
+    "google-generativeai>=0.5.4",
+    "tqdm>=4.66.2",
+]
+monitoring = [
+    "wandb>=0.16.6",
+]
