@@ -8,8 +8,11 @@ training:
   warmup_ratio: 0.03
   gradient_checkpointing: true
   logging_steps: 10
-  log_with_tensorboard: true
   save_steps: 100
+
+wandb:
+  project: safetylora-youth
+  run_name: sft-local-smoke1
 
 dataset:
   name_or_path: data/train.jsonl

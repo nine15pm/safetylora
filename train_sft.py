@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -75,6 +76,7 @@ def main() -> None:
     training_cfg = dict(config["training"])
     dataset_cfg = dict(config["dataset"])
     optimizer_cfg = dict(config.get("optimizer", {}))
+    wandb_cfg = dict(config.get("wandb", {}))
 
     if "output_dir" not in training_cfg:
         raise ValueError("`training.output_dir` must be set in the config.")
@@ -117,11 +119,26 @@ def main() -> None:
         "seed",
         "gradient_checkpointing",
         "resume_from_checkpoint",
-        "log_with_tensorboard",
     }
     training_kwargs = {k: v for k, v in training_kwargs.items() if k not in special_keys}
-    if training_cfg.get("log_with_tensorboard"):
-        training_kwargs.setdefault("report_to", ["tensorboard"])
+    if wandb_cfg:
+        env_var_map = {
+            "project": "WANDB_PROJECT",
+            "entity": "WANDB_ENTITY",
+            "group": "WANDB_RUN_GROUP",
+            "run_name": "WANDB_NAME",
+        }
+        for key, env_key in env_var_map.items():
+            value = wandb_cfg.get(key)
+            if value:
+                os.environ.setdefault(env_key, str(value))
+        tags = wandb_cfg.get("tags")
+        if tags:
+            os.environ.setdefault("WANDB_TAGS", ",".join(tags))
+        watch = wandb_cfg.get("watch")
+        if watch:
+            os.environ.setdefault("WANDB_WATCH", str(watch))
+        training_kwargs.setdefault("report_to", ["wandb"])
     training_args = TrainingArguments(**training_kwargs)
 
     trainer = SFTTrainer(
