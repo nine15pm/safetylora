@@ -97,7 +97,6 @@ def main() -> None:
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         dtype="auto",
-        device_map="auto",
     )
 
     if training_cfg.get("gradient_checkpointing"):
