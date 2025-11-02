@@ -30,6 +30,7 @@ def load_models(base: str, adapter: str):
     base_model = AutoModelForCausalLM.from_pretrained(base, **common)
     model = PeftModel.from_pretrained(base_model, adapter)
     adapter_name = next(iter(model.peft_config))
+    model.set_adapter(adapter_name)
     model.eval()
     return tok, model, adapter_name
 
@@ -107,9 +108,8 @@ def main():
                 prompt_inputs["attention_mask"] = prompt_inputs["input_ids"].ne(tok.pad_token_id).long()
         model_inputs = to_device(prompt_inputs, model)
 
-        model.disable_adapter()
-        base_text = generate(model, tok, model_inputs, args.max_new_tokens, args.temperature)
-        model.set_adapter(adapter_name)
+        with model.disable_adapter():
+            base_text = generate(model, tok, model_inputs, args.max_new_tokens, args.temperature)
         sft_text = generate(model, tok, model_inputs, args.max_new_tokens, args.temperature)
         print("\n[Base]\n" + base_text + "\n")
         print("[SFT]\n" + sft_text + "\n")
