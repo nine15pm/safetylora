@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Terminal chat helper to compare base Qwen 0.6B and an SFT LoRA adapter."""
+"""Terminal chat helper to compare base model vs. SFT LoRA adapter."""
 
 import argparse
 
@@ -8,17 +8,30 @@ from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
+def prompt_value(label, current, caster=None):
+    suffix = f" [{current}]" if current not in (None, "") else ""
+    raw = input(f"{label}{suffix}: ").strip()
+    if not raw:
+        return current
+    if caster is None:
+        return raw
+    try:
+        return caster(raw)
+    except ValueError:
+        print(f"Invalid {label.lower()}, keeping {current}.")
+        return current
+
+
 def load_models(base: str, adapter: str):
     tok = AutoTokenizer.from_pretrained(adapter or base)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     common = dict(dtype="auto", device_map="auto")
-    base_model = AutoModelForCausalLM.from_pretrained(base, **common).eval()
-    sft_model = PeftModel.from_pretrained(
-        AutoModelForCausalLM.from_pretrained(base, **common),
-        adapter,
-    ).eval()
-    return tok, base_model, sft_model
+    base_model = AutoModelForCausalLM.from_pretrained(base, **common)
+    model = PeftModel.from_pretrained(base_model, adapter)
+    adapter_name = next(iter(model.peft_config))
+    model.eval()
+    return tok, model, adapter_name
 
 
 def to_device(batch, model):
@@ -43,14 +56,23 @@ def generate(model, tok, inputs, max_new_tokens: int, temperature: float):
 
 def main():
     parser = argparse.ArgumentParser(description="Compare base vs. SFT LoRA responses.")
-    parser.add_argument("--base", default="Qwen/Qwen3-0.6B")
-    parser.add_argument("--adapter", default="runs/sft/qwen3-0.6b/local-smoke")
-    parser.add_argument("--max-new-tokens", type=int, default=256)
+    parser.add_argument("--base", default="Qwen/Qwen3-4B-Instruct-2507")
+    parser.add_argument("--adapter", default="runs/sft/qwen3-4b/run1")
+    parser.add_argument("--max-new-tokens", type=int, default=2048)
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--system", default=None)
     args = parser.parse_args()
 
-    tok, base_model, sft_model = load_models(args.base, args.adapter)
+    args.base = prompt_value("Base model", args.base)
+    args.adapter = prompt_value("LoRA adapter", args.adapter)
+    if not args.adapter:
+        raise ValueError("LoRA adapter path is required for comparison.")
+    args.max_new_tokens = prompt_value("Max new tokens", args.max_new_tokens, int)
+    args.temperature = prompt_value("Temperature", args.temperature, float)
+    system_prompt = args.system if args.system is not None else ""
+    args.system = prompt_value("System prompt", system_prompt) or None
+
+    tok, model, adapter_name = load_models(args.base, args.adapter)
 
     system = args.system.strip() if args.system else None
     print("Chat ready. Ctrl+C to exit.")
@@ -83,10 +105,12 @@ def main():
             prompt_inputs = {k: v for k, v in prompt.items()}
             if "attention_mask" not in prompt_inputs:
                 prompt_inputs["attention_mask"] = prompt_inputs["input_ids"].ne(tok.pad_token_id).long()
-        base_inputs = to_device(prompt_inputs, base_model)
-        sft_inputs = to_device(prompt_inputs, sft_model)
-        base_text = generate(base_model, tok, base_inputs, args.max_new_tokens, args.temperature)
-        sft_text = generate(sft_model, tok, sft_inputs, args.max_new_tokens, args.temperature)
+        model_inputs = to_device(prompt_inputs, model)
+
+        model.disable_adapter()
+        base_text = generate(model, tok, model_inputs, args.max_new_tokens, args.temperature)
+        model.set_adapter(adapter_name)
+        sft_text = generate(model, tok, model_inputs, args.max_new_tokens, args.temperature)
         print("\n[Base]\n" + base_text + "\n")
         print("[SFT]\n" + sft_text + "\n")
 
