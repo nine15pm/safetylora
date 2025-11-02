@@ -99,8 +99,11 @@ def main() -> None:
         dtype="auto",
     )
 
+    gradient_checkpointing_kwargs = training_cfg.get("gradient_checkpointing_kwargs")
     if training_cfg.get("gradient_checkpointing"):
-        model.gradient_checkpointing_enable()
+        model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs=gradient_checkpointing_kwargs
+        )
         if getattr(model.config, "use_cache", None) is not None:
             model.config.use_cache = False
 
@@ -117,6 +120,7 @@ def main() -> None:
         "model_name_or_path",
         "seed",
         "gradient_checkpointing",
+        "gradient_checkpointing_kwargs",
         "resume_from_checkpoint",
     }
     training_kwargs = {k: v for k, v in training_kwargs.items() if k not in special_keys}
